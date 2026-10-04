@@ -1,16 +1,19 @@
+
 import streamlit as st
 import numpy as np
+import pandas as pd
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import joblib
 import tempfile
 import os
+from datetime import datetime
 
 
-# ---------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
 
 st.set_page_config(
     page_title="NoiseGuard",
@@ -19,9 +22,9 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------
-# Load trained model
-# ---------------------------------------------------------
+# =========================================================
+# LOAD TRAINED MODEL
+# =========================================================
 
 MODEL_PATH = "noiseguard_final_model.pkl"
 ENCODER_PATH = "noiseguard_final_label_encoder.pkl"
@@ -30,9 +33,9 @@ model = joblib.load(MODEL_PATH)
 label_encoder = joblib.load(ENCODER_PATH)
 
 
-# ---------------------------------------------------------
-# Environmental categories
-# ---------------------------------------------------------
+# =========================================================
+# ENVIRONMENTAL SOUND CATEGORIES
+# =========================================================
 
 sound_categories = {
     "air_conditioner": "Building / Mechanical Noise",
@@ -48,10 +51,18 @@ sound_categories = {
 }
 
 
-# ---------------------------------------------------------
-# Feature extraction
-# Must match training exactly
-# ---------------------------------------------------------
+# =========================================================
+# MONITORING SESSION STORAGE
+# =========================================================
+
+if "monitoring_history" not in st.session_state:
+    st.session_state.monitoring_history = []
+
+
+# =========================================================
+# FEATURE EXTRACTION
+# MUST MATCH TRAINING EXACTLY
+# =========================================================
 
 def extract_rich_features(file_path, n_mfcc=40):
 
@@ -96,7 +107,7 @@ def extract_rich_features(file_path, n_mfcc=40):
         audio
     )
 
-    # Same 112-feature representation used during training
+    # 112-feature representation used during training
     features = np.hstack([
         np.mean(mfcc, axis=1),
         np.std(mfcc, axis=1),
@@ -120,9 +131,9 @@ def extract_rich_features(file_path, n_mfcc=40):
     return features
 
 
-# ---------------------------------------------------------
-# Acoustic activity analysis
-# ---------------------------------------------------------
+# =========================================================
+# ACOUSTIC ACTIVITY ANALYSIS
+# =========================================================
 
 def analyze_acoustic_activity(file_path):
 
@@ -131,20 +142,18 @@ def analyze_acoustic_activity(file_path):
         sr=None
     )
 
-    # RMS energy over short frames
     rms = librosa.feature.rms(
         y=audio,
         frame_length=2048,
         hop_length=512
     )[0]
 
-    # Convert amplitude to relative dB
     rms_db = librosa.amplitude_to_db(
         rms,
         ref=np.max
     )
 
-    # Adaptive threshold based on this recording
+    # Relative threshold within the recording
     threshold = np.percentile(
         rms_db,
         50
@@ -152,24 +161,26 @@ def analyze_acoustic_activity(file_path):
 
     active = rms_db >= threshold
 
-    # Percentage of recording containing
-    # relatively active acoustic energy
     active_percentage = (
         np.mean(active) * 100
     )
 
-    # Recording duration
     duration = len(audio) / sr
 
-    # RMS statistics
-    mean_rms = float(np.mean(rms))
-    max_rms = float(np.max(rms))
+    mean_rms = float(
+        np.mean(rms)
+    )
 
-    # Relative acoustic activity classification
+    max_rms = float(
+        np.max(rms)
+    )
+
     if active_percentage < 40:
         activity = "Low"
+
     elif active_percentage < 70:
         activity = "Moderate"
+
     else:
         activity = "High"
 
@@ -185,9 +196,9 @@ def analyze_acoustic_activity(file_path):
     }
 
 
-# ---------------------------------------------------------
-# Environmental assessment
-# ---------------------------------------------------------
+# =========================================================
+# ENVIRONMENTAL ASSESSMENT
+# =========================================================
 
 def generate_assessment(
     predicted_class,
@@ -198,19 +209,23 @@ def generate_assessment(
     if activity == "High":
 
         return (
-            f"⚠️ High acoustic activity detected. "
-            f"The identified {predicted_class.replace('_', ' ')} "
-            f"belongs to the {category} category and may "
-            f"represent a potential environmental noise source. "
-            f"Further monitoring is recommended."
+            f"High relative acoustic activity detected. "
+            f"The identified source is **"
+            f"{predicted_class.replace('_', ' ').title()}**, "
+            f"belonging to the **{category}** category. "
+            f"This recording should be considered a "
+            f"high-activity monitoring event. Repeated "
+            f"recordings can help determine whether the "
+            f"source is persistent."
         )
 
     elif activity == "Moderate":
 
         return (
-            f"🟠 Moderate acoustic activity detected. "
-            f"The identified {predicted_class.replace('_', ' ')} "
-            f"belongs to the {category} category. "
+            f"Moderate relative acoustic activity detected. "
+            f"The identified source is **"
+            f"{predicted_class.replace('_', ' ').title()}**, "
+            f"belonging to the **{category}** category. "
             f"Additional recordings can help determine "
             f"whether the source is persistent."
         )
@@ -218,16 +233,16 @@ def generate_assessment(
     else:
 
         return (
-            f"🟢 Low acoustic activity detected. "
-            f"The identified {predicted_class.replace('_', ' ')} "
-            f"appears limited within this recording. "
-            f"Additional samples can be used for monitoring."
+            f"Low relative acoustic activity detected. "
+            f"The identified source is **"
+            f"{predicted_class.replace('_', ' ').title()}**, "
+            f"belonging to the **{category}** category."
         )
 
 
-# ---------------------------------------------------------
-# Main application
-# ---------------------------------------------------------
+# =========================================================
+# PAGE HEADER
+# =========================================================
 
 st.title("🎧 NoiseGuard")
 
@@ -236,44 +251,93 @@ st.subheader(
 )
 
 st.write(
-    "Upload an environmental audio clip and NoiseGuard "
-    "will identify the most likely sound source and "
-    "analyze the acoustic activity of the recording."
+    "Upload environmental audio recordings and NoiseGuard "
+    "will identify potential noise sources, analyze their "
+    "relative acoustic activity, and maintain a monitoring "
+    "history during the current session."
 )
 
 st.info(
-    "NoiseGuard combines AI-based sound-source "
-    "classification with relative acoustic activity "
-    "analysis. It does not directly measure calibrated "
-    "sound pressure level (dB)."
+    "NoiseGuard performs environmental sound-source "
+    "classification and relative acoustic activity analysis. "
+    "It does not directly measure calibrated sound pressure "
+    "level (dB)."
 )
 
 
-# ---------------------------------------------------------
-# Upload audio
-# ---------------------------------------------------------
+# =========================================================
+# SIDEBAR
+# =========================================================
+
+st.sidebar.title("🎧 NoiseGuard")
+
+st.sidebar.write(
+    "Environmental Noise Monitoring System"
+)
+
+st.sidebar.divider()
+
+st.sidebar.markdown(
+    """
+### Monitoring Pipeline
+
+🎙️ Audio Input  
+↓  
+🔧 Feature Extraction  
+↓  
+🤖 SVM Classification  
+↓  
+🔊 Noise Source Detection  
+↓  
+📊 Acoustic Activity Analysis  
+↓  
+📈 Monitoring History  
+↓  
+🌍 Environmental Assessment
+"""
+)
+
+st.sidebar.divider()
+
+st.sidebar.caption(
+    "Relative acoustic activity is calculated from "
+    "the uploaded recording and is not a calibrated "
+    "noise measurement."
+)
+
+
+# =========================================================
+# AUDIO UPLOAD
+# =========================================================
+
+st.header("🎙️ Environmental Audio Monitoring")
 
 uploaded_file = st.file_uploader(
-    "Upload Environmental Audio",
-    type=["wav", "mp3", "ogg", "flac"]
+    "Upload an environmental audio recording",
+    type=[
+        "wav",
+        "mp3",
+        "ogg",
+        "flac"
+    ]
 )
 
 
 if uploaded_file is not None:
 
     st.audio(
-        uploaded_file,
-        format="audio/wav"
+        uploaded_file
     )
 
     if st.button(
-        "🔍 Analyze Audio",
+        "🔍 Analyze & Monitor Audio",
         type="primary"
     ):
 
-        with st.spinner("Analyzing audio..."):
+        with st.spinner(
+            "Analyzing environmental audio..."
+        ):
 
-            # Save uploaded file temporarily
             suffix = os.path.splitext(
                 uploaded_file.name
             )[1]
@@ -291,21 +355,18 @@ if uploaded_file is not None:
 
             try:
 
-                # -------------------------------------------------
-                # Feature extraction
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # AI CLASSIFICATION
+                # ---------------------------------------------
 
                 features = extract_rich_features(
                     temp_path
                 )
 
                 features = features.reshape(
-                    1, -1
+                    1,
+                    -1
                 )
-
-                # -------------------------------------------------
-                # AI prediction
-                # -------------------------------------------------
 
                 prediction = model.predict(
                     features
@@ -333,25 +394,57 @@ if uploaded_file is not None:
                     "Environmental Sound"
                 )
 
-                # -------------------------------------------------
-                # Acoustic monitoring
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # ACOUSTIC ANALYSIS
+                # ---------------------------------------------
 
                 acoustic = analyze_acoustic_activity(
                     temp_path
                 )
 
-                # -------------------------------------------------
-                # Results
-                # -------------------------------------------------
+                activity = acoustic["activity"]
 
-                st.success(
-                    "Audio analysis completed!"
+                # ---------------------------------------------
+                # MONITORING EVENT
+                # ---------------------------------------------
+
+                monitoring_event = {
+                    "Time": datetime.now().strftime(
+                        "%H:%M:%S"
+                    ),
+                    "Source": predicted_class.replace(
+                        "_",
+                        " "
+                    ).title(),
+                    "Category": category,
+                    "Confidence (%)": round(
+                        confidence,
+                        2
+                    ),
+                    "Activity": activity,
+                    "Active Portion (%)": acoustic[
+                        "active_percentage"
+                    ],
+                    "Duration (s)": acoustic[
+                        "duration"
+                    ]
+                }
+
+                st.session_state.monitoring_history.append(
+                    monitoring_event
                 )
 
-                # -------------------------------------------------
-                # AI Sound Identification
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # SUCCESS
+                # ---------------------------------------------
+
+                st.success(
+                    "Environmental audio monitoring completed!"
+                )
+
+                # ---------------------------------------------
+                # AI IDENTIFICATION
+                # ---------------------------------------------
 
                 st.subheader(
                     "🤖 AI Sound Identification"
@@ -364,7 +457,10 @@ if uploaded_file is not None:
                     st.metric(
                         "Detected Sound",
                         predicted_class
-                        .replace("_", " ")
+                        .replace(
+                            "_",
+                            " "
+                        )
                         .title()
                     )
 
@@ -382,37 +478,35 @@ if uploaded_file is not None:
                         category
                     )
 
-                # -------------------------------------------------
-                # Acoustic Monitoring
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # ACOUSTIC MONITORING
+                # ---------------------------------------------
 
                 st.subheader(
                     "🌍 Acoustic Monitoring"
                 )
 
-                monitor_col1, monitor_col2, monitor_col3 = (
-                    st.columns(3)
-                )
+                col1, col2, col3 = st.columns(3)
 
-                with monitor_col1:
+                with col1:
 
                     st.metric(
                         "Recording Duration",
-                        f"{acoustic['duration']} s"
+                        f"{acoustic['duration']:.1f} s"
                     )
 
-                with monitor_col2:
+                with col2:
 
                     st.metric(
-                        "Acoustic Activity",
-                        acoustic["activity"]
+                        "Relative Acoustic Activity",
+                        activity
                     )
 
-                with monitor_col3:
+                with col3:
 
                     st.metric(
                         "Active Acoustic Portion",
-                        f"{acoustic['active_percentage']}%"
+                        f"{acoustic['active_percentage']:.2f}%"
                     )
 
                 st.caption(
@@ -421,9 +515,9 @@ if uploaded_file is not None:
                     "calibrated sound-pressure measurement."
                 )
 
-                # -------------------------------------------------
-                # Environmental Assessment
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # ENVIRONMENTAL ASSESSMENT
+                # ---------------------------------------------
 
                 st.subheader(
                     "🌱 Environmental Assessment"
@@ -432,16 +526,16 @@ if uploaded_file is not None:
                 assessment = generate_assessment(
                     predicted_class,
                     category,
-                    acoustic["activity"]
+                    activity
                 )
 
-                if acoustic["activity"] == "High":
+                if activity == "High":
 
                     st.warning(
                         assessment
                     )
 
-                elif acoustic["activity"] == "Moderate":
+                elif activity == "Moderate":
 
                     st.info(
                         assessment
@@ -453,9 +547,9 @@ if uploaded_file is not None:
                         assessment
                     )
 
-                # -------------------------------------------------
-                # Top 3 predictions
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # TOP PREDICTIONS
+                # ---------------------------------------------
 
                 st.subheader(
                     "🔎 Top Sound Predictions"
@@ -489,9 +583,9 @@ if uploaded_file is not None:
                         )
                     )
 
-                # -------------------------------------------------
-                # Spectrogram
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # SPECTROGRAM
+                # ---------------------------------------------
 
                 st.subheader(
                     "📊 Audio Spectrogram"
@@ -533,18 +627,27 @@ if uploaded_file is not None:
                     "NoiseGuard Audio Spectrogram"
                 )
 
-                ax.set_xlabel("Time")
-                ax.set_ylabel("Frequency")
+                ax.set_xlabel(
+                    "Time"
+                )
+
+                ax.set_ylabel(
+                    "Frequency"
+                )
 
                 plt.tight_layout()
 
-                st.pyplot(fig)
+                st.pyplot(
+                    fig
+                )
 
-                plt.close(fig)
+                plt.close(
+                    fig
+                )
 
-                # -------------------------------------------------
-                # Detailed interpretation
-                # -------------------------------------------------
+                # ---------------------------------------------
+                # CURRENT RECORDING INTERPRETATION
+                # ---------------------------------------------
 
                 st.subheader(
                     "📋 Environmental Interpretation"
@@ -553,64 +656,257 @@ if uploaded_file is not None:
                 st.write(
                     f"The detected sound is classified as "
                     f"**{predicted_class.replace('_', ' ').title()}**, "
-                    f"which belongs to the "
-                    f"**{category}** category."
+                    f"which belongs to the **{category}** category."
                 )
 
                 st.write(
                     f"The recording contains "
-                    f"**{acoustic['active_percentage']}%** "
-                    f"relative acoustic activity and is "
-                    f"classified as **{acoustic['activity']} "
-                    f"acoustic activity**."
+                    f"**{acoustic['active_percentage']:.2f}%** "
+                    f"relative acoustic activity and is classified "
+                    f"as **{activity} acoustic activity**."
                 )
 
                 st.write(
-                    "This analysis can support environmental "
-                    "noise monitoring by identifying potential "
-                    "noise sources and their acoustic activity "
-                    "within recorded samples."
-                )
-
-            except Exception as e:
-
-                st.error(
-                    f"Unable to analyze this audio file: {e}"
+                    "This monitoring sample can contribute to "
+                    "time-based environmental noise analysis "
+                    "when combined with additional recordings."
                 )
 
             finally:
 
-                # Remove temporary file
-                if os.path.exists(temp_path):
+                if os.path.exists(
+                    temp_path
+                ):
 
                     os.remove(
                         temp_path
                     )
 
 
-# ---------------------------------------------------------
-# Project information
-# ---------------------------------------------------------
+# =========================================================
+# MONITORING DASHBOARD
+# =========================================================
+
+st.divider()
+
+st.header(
+    "📡 Noise Pollution Monitoring Dashboard"
+)
+
+if len(
+    st.session_state.monitoring_history
+) == 0:
+
+    st.info(
+        "No monitoring samples recorded yet. "
+        "Upload and analyze audio recordings above "
+        "to build the monitoring history."
+    )
+
+else:
+
+    history_df = pd.DataFrame(
+        st.session_state.monitoring_history
+    )
+
+    # ---------------------------------------------
+    # SUMMARY METRICS
+    # ---------------------------------------------
+
+    total_recordings = len(
+        history_df
+    )
+
+    total_duration = history_df[
+        "Duration (s)"
+    ].sum()
+
+    high_events = (
+        history_df["Activity"] == "High"
+    ).sum()
+
+    most_common_source = (
+        history_df["Source"]
+        .value_counts()
+        .idxmax()
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Monitoring Samples",
+            total_recordings
+        )
+
+    with col2:
+
+        st.metric(
+            "Total Duration",
+            f"{total_duration:.1f} s"
+        )
+
+    with col3:
+
+        st.metric(
+            "High-Activity Events",
+            int(high_events)
+        )
+
+    with col4:
+
+        st.metric(
+            "Most Frequent Source",
+            most_common_source
+        )
+
+    # ---------------------------------------------
+    # MONITORING HISTORY TABLE
+    # ---------------------------------------------
+
+    st.subheader(
+        "🕒 Monitoring History"
+    )
+
+    st.dataframe(
+        history_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # ---------------------------------------------
+    # SOURCE DISTRIBUTION
+    # ---------------------------------------------
+
+    st.subheader(
+        "🔊 Detected Noise Source Distribution"
+    )
+
+    source_counts = (
+        history_df["Source"]
+        .value_counts()
+    )
+
+    st.bar_chart(
+        source_counts
+    )
+
+    # ---------------------------------------------
+    # ACTIVITY TREND
+    # ---------------------------------------------
+
+    st.subheader(
+        "📈 Relative Acoustic Activity Trend"
+    )
+
+    activity_mapping = {
+        "Low": 1,
+        "Moderate": 2,
+        "High": 3
+    }
+
+    trend_df = history_df.copy()
+
+    trend_df["Activity Score"] = (
+        trend_df["Activity"]
+        .map(activity_mapping)
+    )
+
+    trend_df["Monitoring Sample"] = range(
+        1,
+        len(trend_df) + 1
+    )
+
+    st.line_chart(
+        trend_df.set_index(
+            "Monitoring Sample"
+        )["Activity Score"]
+    )
+
+    st.caption(
+        "Activity scores are relative: "
+        "1 = Low, 2 = Moderate, 3 = High. "
+        "They do not represent calibrated dB values."
+    )
+
+    # ---------------------------------------------
+    # MONITORING SUMMARY
+    # ---------------------------------------------
+
+    st.subheader(
+        "🌍 Monitoring Summary"
+    )
+
+    average_active = history_df[
+        "Active Portion (%)"
+    ].mean()
+
+    st.write(
+        f"NoiseGuard analyzed **{total_recordings} "
+        f"monitoring sample(s)** covering approximately "
+        f"**{total_duration:.1f} seconds** of audio."
+    )
+
+    st.write(
+        f"The average relative active acoustic portion "
+        f"across the monitoring samples was "
+        f"**{average_active:.2f}%**."
+    )
+
+    st.write(
+        f"The most frequently detected source was "
+        f"**{most_common_source}**."
+    )
+
+    if high_events > 0:
+
+        st.warning(
+            f"{high_events} high relative acoustic activity "
+            f"event(s) were detected. Additional monitoring "
+            f"can help determine whether these events are "
+            f"persistent."
+        )
+
+    else:
+
+        st.success(
+            "No high relative acoustic activity events "
+            "have been recorded in the current monitoring session."
+        )
+
+
+# =========================================================
+# ABOUT
+# =========================================================
 
 st.divider()
 
 st.subheader(
-    "About NoiseGuard"
+    "📋 About NoiseGuard"
 )
 
 st.write(
-    "NoiseGuard uses machine learning and audio signal "
-    "processing to identify environmental sound sources "
-    "and analyze relative acoustic activity. The system "
-    "uses MFCC, chroma, spectral and zero-crossing features "
-    "with an SVM classifier."
+    "NoiseGuard is an AI-based environmental noise "
+    "monitoring prototype. It uses audio signal processing "
+    "and machine learning to identify potential environmental "
+    "noise sources and analyze their relative acoustic activity "
+    "across monitoring samples."
 )
 
 st.write(
-    "The current prototype performs source identification "
-    "and relative acoustic activity monitoring. It does "
-    "not provide calibrated sound-pressure measurements "
-    "in decibels."
+    "The system uses MFCC, chroma, spectral and "
+    "zero-crossing features with an SVM classifier. "
+    "The monitoring layer aggregates analyzed recordings "
+    "to provide source distribution, activity trends and "
+    "environmental assessments."
+)
+
+st.info(
+    "Important limitation: NoiseGuard does not provide "
+    "calibrated sound-pressure measurements in decibels. "
+    "Actual SPL monitoring would require calibrated "
+    "microphone measurements and appropriate SPL-labelled data."
 )
 
 st.caption(
