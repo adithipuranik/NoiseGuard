@@ -11,10 +11,57 @@ import io
 from datetime import datetime
 
 # PAGE CONFIGURATION
-st.set_page_config(
-    page_title="NoiseGuard",
-    layout="wide"
-)
+st.set_page_config(page_title="NoiseGuard", layout="wide")
+
+# WHITE AND GREEN THEME
+st.markdown("""
+<style>
+    .stApp {
+        background-color: #F7FAF7;
+        color: #20352A;
+    }
+
+    h1, h2, h3 {
+        color: #206A43 !important;
+    }
+
+    .stButton > button {
+        background-color: #287A4B;
+        color: white;
+        border: none;
+        border-radius: 8px;
+    }
+
+    .stButton > button:hover {
+        background-color: #1D603A;
+        color: white;
+        border: 1px solid #1D603A;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #EAF3EC;
+    }
+
+    [data-testid="stMetric"] {
+        background-color: #EAF3EC;
+        padding: 12px;
+        border-radius: 10px;
+    }
+
+    [data-testid="stFileUploader"] section {
+        background-color: #FFFFFF;
+        border: 1px dashed #8BB89A;
+    }
+
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF;
+    }
+
+    .stProgress > div > div > div > div {
+        background-color: #287A4B;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # LOAD TRAINED MODEL
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
