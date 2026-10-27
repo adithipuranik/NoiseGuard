@@ -25,16 +25,24 @@ st.markdown("""
         color: #206A43 !important;
     }
 
+    .stApp p,
+    .stApp label,
+    .stApp [data-testid="stWidgetLabel"] p,
+    .stRadio div[role="radiogroup"] label,
+    .stRadio div[role="radiogroup"] p {
+        color: #20352A !important;
+    }
+
     .stButton > button {
         background-color: #287A4B;
-        color: white;
+        color: white !important;
         border: none;
         border-radius: 8px;
     }
 
     .stButton > button:hover {
         background-color: #1D603A;
-        color: white;
+        color: white !important;
         border: 1px solid #1D603A;
     }
 
@@ -314,7 +322,6 @@ if uploaded_file is not None:
 
                 # AI IDENTIFICATION
                 st.subheader("AI Sound Identification")
-
                 col1, col2, col3 = st.columns(3)
 
                 with col1:
@@ -331,7 +338,6 @@ if uploaded_file is not None:
 
                 # ACOUSTIC MONITORING
                 st.subheader("Acoustic Monitoring")
-
                 col1, col2, col3 = st.columns(3)
 
                 with col1:
@@ -351,7 +357,6 @@ if uploaded_file is not None:
 
                 # ENVIRONMENTAL ASSESSMENT
                 st.subheader("Environmental Assessment")
-
                 assessment = generate_assessment(
                     predicted_class, category, activity
                 )
@@ -365,7 +370,6 @@ if uploaded_file is not None:
 
                 # TOP PREDICTIONS
                 st.subheader("Top Sound Predictions")
-
                 top_indices = np.argsort(probabilities)[::-1][:3]
 
                 for idx in top_indices:
@@ -380,19 +384,16 @@ if uploaded_file is not None:
 
                 # SPECTROGRAM
                 st.subheader("Audio Spectrogram")
-
                 audio, sr = librosa.load(temp_path, sr=None)
 
                 spectrogram = librosa.feature.melspectrogram(
                     y=audio, sr=sr, n_mels=128
                 )
-
                 spectrogram_db = librosa.power_to_db(
                     spectrogram, ref=np.max
                 )
 
                 fig, ax = plt.subplots(figsize=(12, 4))
-
                 librosa.display.specshow(
                     spectrogram_db,
                     sr=sr,
@@ -411,7 +412,6 @@ if uploaded_file is not None:
 
                 # ENVIRONMENTAL INTERPRETATION
                 st.subheader("Environmental Interpretation")
-
                 st.write(
                     f"The detected sound is classified as "
                     f"**{predicted_class.replace('_', ' ').title()}**, "
@@ -447,16 +447,11 @@ if len(st.session_state.monitoring_history) == 0:
     )
 
 else:
-    history_df = pd.DataFrame(
-        st.session_state.monitoring_history
-    )
+    history_df = pd.DataFrame(st.session_state.monitoring_history)
 
     total_recordings = len(history_df)
     total_duration = history_df["Duration (s)"].sum()
-
-    high_events = (
-        history_df["Activity"] == "High"
-    ).sum()
+    high_events = (history_df["Activity"] == "High").sum()
 
     most_common_source = (
         history_df["Source"].value_counts().idxmax()
@@ -513,7 +508,6 @@ else:
 
     # MONITORING SUMMARY
     st.subheader("Monitoring Summary")
-
     average_active = history_df["Active Portion (%)"].mean()
 
     st.write(
